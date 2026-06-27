@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir python-dotenv psycopg2-binary
 COPY ./backend /code/backend
 
 # Set the environment variable for Supabase
-ENV DATABASE_URL=postgresql://postgres:CbRoXymbtTQu8B7k@db.fdeoxtmjfhlsijqltytm.supabase.co:5432/postgres
+ENV DATABASE_URL=postgresql://postgres.fdeoxtmjfhlsijqltytm:CbRoXymbtTQu8B7k@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
 
 # Hugging Face runs on port 7860
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "7860"]
