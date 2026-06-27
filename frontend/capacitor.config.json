@@ -1,0 +1,5 @@
+{
+  "appId": "com.room.expense",
+  "appName": "Room Expense Tracker",
+  "webDir": "dist"
+}

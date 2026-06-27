@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-200" :class="{ 'dark': isDarkMode }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Room Exp">
+    <title>Room Expense Tracker</title>
+    
+    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiUm9vbSBFeHBlbnNlIFRyYWNrZXIiLCJzaG9ydF9uYW1lIjoiRXhwZW5zZXMiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZmZmZmZiIsInRoZW1lX2NvbG9yIjoiIzRmNDZlNSIsImljb25zIjpbeyJzcmMiOiJodHRwczovL2Nkbi1pY29ucy1wbmcuZmxhdGljb24uY29tLzUxMi8xMDQ3My8xMDQ3MzYxNi5wbmciLCJzaXplcyI6IjUxMng1MTIiLCJ0eXBlIjoiaW1hZ2UvcG5nIn1dfQ==">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        [x-cloak] { display: none !important; }
+        .tab-btn {
+            padding: 0.75rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+            text-align: center;
+        }
+        .tab-btn.active {
+            background-color: white;
+            border-color: #e2e8f0;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            color: #4f46e5;
+        }
+        .tab-btn:not(.active):hover {
+            background-color: #f8fafc;
+        }
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .dark .tab-btn.active { background-color: #374151; border-color: #4b5563; color: #818cf8; }
+        .dark .tab-btn:not(.active):hover { background-color: #4b5563; }
+        .edit-input, .form-input {
+            @apply mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 py-2;
+        }
+    </style>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-900" x-data="expenseTracker()">
+    <div class="min-h-full pb-20 sm:pb-0">
+        
+        <header class="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-30">
+            <div class="mx-auto max-w-4xl px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
+                <div class="flex-1">
+                    <h1 class="text-xl sm:text-2xl font-bold leading-6 text-gray-900 dark:text-gray-100 tracking-tight">Room Expenses</h1>
+                    <p class="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">Track, Split, and Settle.</p>
+                </div>
+                <button @click="toggleSettings()" aria-label="Open settings" class="settings-toggle p-2 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 ml-4 transition-colors duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.41.41.43 1.059.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.31.391.29 1.04-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.02-.398-1.11-.94l-.149-.894c-.07-.424-.384-.764-.78-.93-.398-.164-.855-.142-1.205.108l-.737.527a1.125 1.125 0 01-1.45-.12l-.773-.774c-.41-.41-.43-1.059-.12-1.45l.527-.737c.25-.35.272-.806.107-1.204-.165-.397-.505-.71-.93-.78l-.893-.15c-.543-.09-.94-.56-.94-1.109v-1.094c0-.55.397-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738c-.31-.391-.29-1.04.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.806.272 1.204.107.397-.165.71-.505.78-.929l.149-.894z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <div x-show="showRoomSetup" x-transition class="fixed inset-0 bg-gray-900 bg-opacity-90 h-full w-full z-50 flex items-center justify-center p-4" @click.away="!loadingRoom && currentRoom && (showRoomSetup = false)">
+            <div class="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6" @click.away.off>
+                <div class="text-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Welcome</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Enter your room code to start.</p>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label for="roomCode" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Room Code</label>
+                        <input type="text" id="roomCode" x-model="roomCode" placeholder="e.g., Room101" maxlength="20" class="form-input text-center text-lg tracking-widest uppercase" @keyup.enter="joinRoom">
+                    </div>
+                    <div x-show="errorMessage" class="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded text-center" x-text="errorMessage"></div>
+                    <div class="flex space-x-2">
+                        <button x-show="currentRoom" @click="showRoomSetup = false" class="flex-1 py-3 px-4 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg font-medium">Cancel</button>
+                        <button @click="joinRoom" :disabled="!roomCode || loadingRoom" class="flex-1 py-3 px-4 text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium shadow-md transition-all transform active:scale-95 disabled:opacity-50 disabled:scale-100 flex justify-center items-center">
+                            <span x-show="loadingRoom" class="spinner mr-2"></span>
+                            <span x-show="!loadingRoom">Enter Room</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="showSettings" x-transition:enter="transition ease-in-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in-out duration-300" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full" class="fixed inset-y-0 right-0 w-full sm:w-96 bg-white dark:bg-gray-800 shadow-2xl z-50 overflow-y-auto" @click.away="closeSettingsIfOutside($event)">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h2>
+                    <button @click="showSettings = false" class="p-2 -mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between py-4 border-b border-gray-100 dark:border-gray-700">
+                    <span class="font-medium text-gray-900 dark:text-gray-100">Dark Appearance</span>
+                    <button @click="toggleDarkMode" :class="{ 'bg-indigo-600': isDarkMode, 'bg-gray-200': !isDarkMode }" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none">
+                        <span :class="{ 'translate-x-6': isDarkMode, 'translate-x-1': !isDarkMode }" class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200"></span>
+                    </button>
+                </div>
+
+                <div class="py-6 border-b border-gray-100 dark:border-gray-700">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 uppercase tracking-wide text-xs">Roommates</h3>
+                    <div class="space-y-3">
+                        <template x-for="(person, index) in roommates" :key="index">
+                            <div class="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                <div x-show="!editingRoommate[index]" class="font-medium text-sm text-gray-900 dark:text-gray-100 px-2" x-text="person"></div>
+                                <input x-show="editingRoommate[index]" type="text" x-model="editRoommateName[index]" class="block w-full rounded border-gray-300 dark:border-gray-600 text-sm p-1 dark:bg-gray-700 dark:text-white">
+                                
+                                <div class="flex items-center space-x-2 ml-2">
+                                    <template x-if="!editingRoommate[index]">
+                                        <div class="flex space-x-2">
+                                            <button @click="startEditRoommate(index, person)" class="text-blue-600 dark:text-blue-400 text-xs font-medium">Edit</button>
+                                            <button @click="confirmDeleteRoommate(index)" class="text-red-600 dark:text-red-400 text-xs font-medium">Del</button>
+                                        </div>
+                                    </template>
+                                    <template x-if="editingRoommate[index]">
+                                        <div class="flex space-x-2">
+                                            <button @click="saveEditRoommate(index, person)" class="text-green-600 text-xs font-medium">Save</button>
+                                            <button @click="cancelEditRoommate(index)" class="text-gray-500 text-xs font-medium">Cancel</button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="mt-3 flex">
+                        <input type="text" x-model="newRoommateName" placeholder="New Name" class="flex-1 rounded-l-md border-gray-300 dark:border-gray-600 shadow-sm text-sm dark:bg-gray-700 dark:text-white p-2">
+                        <button @click="addRoommate" class="bg-indigo-600 text-white px-4 py-2 rounded-r-md text-sm hover:bg-indigo-700">Add</button>
+                    </div>
+                </div>
+
+                <div class="py-6">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 uppercase tracking-wide text-xs">Shared Notes</h3>
+                    <textarea x-model="notes" rows="4" class="w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm p-3 dark:text-gray-100" placeholder="Shopping list, wifi password, etc."></textarea>
+                    <button @click="saveNotes" class="mt-2 text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:underline">Save Notes</button>
+                </div>
+
+                <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-3">
+                    <div class="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                        <div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Current Room</p>
+                            <p class="font-mono font-bold text-gray-900 dark:text-gray-100" x-text="currentRoom"></p>
+                        </div>
+                        <button @click="leaveRoom()" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">Switch Room</button>
+                    </div>
+                    
+                    <button @click="confirmResetAll()" class="w-full py-2 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 rounded-md text-sm hover:bg-red-50 dark:hover:bg-red-900/30">Reset All Data</button>
+                </div>
+            </div>
+        </div>
+
+        <main class="mx-auto max-w-4xl py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
+            <div x-show="errorMessage" class="mb-4 p-4 bg-red-100 dark:bg-red-900/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 rounded-lg shadow-sm flex justify-between items-center">
+                <span x-text="errorMessage"></span>
+                <button @click="errorMessage = ''" class="text-red-500 hover:text-red-700">&times;</button>
+            </div>
+
+            <div class="mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl flex space-x-1 shadow-inner">
+                <button @click="activeTab = 'summary'; clearErrors()" :class="{ 'active': activeTab === 'summary' }" class="tab-btn">Summary</button>
+                <button @click="activeTab = 'expenses'; clearErrors()" :class="{ 'active': activeTab === 'expenses' }" class="tab-btn">Expenses</button>
+                <button @click="activeTab = 'deposits'; clearErrors()" :class="{ 'active': activeTab === 'deposits' }" class="tab-btn">Deposits</button>
+            </div>
+
+            <div x-show="activeTab === 'summary'" class="tab-content space-y-6" x-cloak>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group">
+                        <div class="absolute right-0 top-0 h-24 w-24 bg-green-50 dark:bg-green-900/10 rounded-full -mr-6 -mt-6 transition-transform group-hover:scale-110"></div>
+                        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 relative">Total Pot</h3>
+                        <p class="mt-2 text-3xl font-bold text-gray-900 dark:text-gray-100 relative" x-text="formatCurrency(summary.totalPot)"></p>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group">
+                        <div class="absolute right-0 top-0 h-24 w-24 bg-red-50 dark:bg-red-900/10 rounded-full -mr-6 -mt-6 transition-transform group-hover:scale-110"></div>
+                        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 relative">Total Spent</h3>
+                        <p class="mt-2 text-3xl font-bold text-gray-900 dark:text-gray-100 relative" x-text="formatCurrency(summary.totalSpent)"></p>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group">
+                        <div class="absolute right-0 top-0 h-24 w-24 bg-blue-50 dark:bg-blue-900/10 rounded-full -mr-6 -mt-6 transition-transform group-hover:scale-110"></div>
+                        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 relative">Balance</h3>
+                        <p class="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400 relative" x-text="formatCurrency(summary.moneyLeft)"></p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                    <div class="p-5 border-b border-gray-100 dark:border-gray-700">
+                        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Balances</h2>
+                        <p class="text-xs text-gray-500">Positive = Get Refund, Negative = Owe Money</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-700/50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Member</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Deposited</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Spent Share</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Net Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                <template x-for="person in roommates" :key="person">
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100" x-text="person"></td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 dark:text-green-400" x-text="formatCurrency(summary.byPerson[person]?.deposited || 0)"></td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 dark:text-red-400" x-text="formatCurrency(summary.byPerson[person]?.expenseShare || 0)"></td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-bold" :class="(summary.byPerson[person]?.balance || 0) >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'" x-text="formatCurrency(summary.byPerson[person]?.balance || 0)"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div x-show="activeTab === 'expenses'" class="tab-content space-y-6" x-cloak>
+                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Add Expense</h2>
+                    <form @submit.prevent="addExpense" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Date</label>
+                                <input type="date" x-model="newExpense.date" required class="form-input">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Amount (₹)</label>
+                                <input type="number" x-model.number="newExpense.amount" step="0.01" min="0" placeholder="0.00" required class="form-input text-lg font-semibold">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Description</label>
+                                <input type="text" x-model="newExpense.description" placeholder="e.g. Dinner, WiFi" required class="form-input">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Category</label>
+                                <select x-model="newExpense.category" class="form-input">
+                                    <template x-for="cat in categories" :key="cat">
+                                        <option :value="cat" x-text="cat"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Paid By</label>
+                            <select x-model="newExpense.paidBy" required class="form-input">
+                                <option value="" disabled>Select Payer</option>
+                                <template x-for="person in roommates" :key="person">
+                                    <option :value="person" x-text="person"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Split Among</span>
+                                <div class="space-x-2">
+                                    <button type="button" @click="toggleSplit(true)" class="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">All</button>
+                                    <button type="button" @click="toggleSplit(false)" class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400">Clear</button>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="person in roommates" :key="person">
+                                    <label class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-colors" :class="newExpense.splitAmong.includes(person) ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300'">
+                                        <input type="checkbox" :value="person" x-model="newExpense.splitAmong" class="hidden">
+                                        <span x-text="person"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                        <button type="submit" :disabled="loadingExpense" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-md transition-transform active:scale-95 disabled:opacity-50">
+                            Add Expense
+                        </button>
+                    </form>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">History</h3>
+                        <select x-model="expenseFilterOption" class="text-xs border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="all">All Members</option>
+                            <template x-for="person in roommates" :key="person">
+                                <option :value="person" x-text="person"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <template x-for="expense in sortedExpenses" :key="expense.id">
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700" :class="{ 'ring-2 ring-indigo-500': editingExpenseId === expense.id }">
+                            <div x-show="editingExpenseId !== expense.id" class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-xs font-mono text-gray-400" x-text="formatDate(expense.date)"></span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300" x-text="expense.category || 'General'"></span>
+                                    </div>
+                                    <h4 class="text-base font-semibold text-gray-900 dark:text-white mt-1" x-text="expense.description"></h4>
+                                    <div class="text-xs text-gray-500 mt-2 leading-relaxed">
+                                        <span class="block sm:inline">Paid by <span class="font-bold text-gray-700 dark:text-gray-300" x-text="expense.paidBy"></span></span>
+                                        <span class="hidden sm:inline mx-1">&bull;</span>
+                                        <span class="block sm:inline">Split for: <span class="font-medium text-gray-600 dark:text-gray-400" x-text="formatSplitList(expense.splitAmong)"></span></span>
+                                    </div>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <div class="text-lg font-bold text-red-600 dark:text-red-400" x-text="formatCurrency(expense.amount)"></div>
+                                    <div class="flex space-x-3 mt-2 justify-end">
+                                        <button @click="startEditExpense(expense)" class="text-blue-500 hover:text-blue-700">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                        <button @click="confirmDeleteExpense(expense.id)" class="text-red-500 hover:text-red-700">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div x-show="editingExpenseId === expense.id" class="space-y-3">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="date" x-model="editExpense.date" class="form-input text-xs">
+                                    <input type="number" x-model.number="editExpense.amount" class="form-input text-xs">
+                                </div>
+                                <input type="text" x-model="editExpense.description" class="form-input text-sm">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select x-model="editExpense.category" class="form-input text-xs">
+                                         <template x-for="cat in categories" :key="cat"><option :value="cat" x-text="cat"></option></template>
+                                    </select>
+                                    <select x-model="editExpense.paidBy" class="form-input text-xs">
+                                        <template x-for="person in roommates" :key="person"><option :value="person" x-text="person"></option></template>
+                                    </select>
+                                </div>
+                                <div class="bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                                    <p class="text-xs text-gray-500 mb-1">Split Among:</p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <template x-for="person in roommates" :key="person">
+                                            <label class="inline-flex items-center text-xs space-x-1 cursor-pointer bg-white dark:bg-gray-600 px-2 py-1 rounded border border-gray-200 dark:border-gray-500">
+                                                <input type="checkbox" :value="person" x-model="editExpense.splitAmong" class="rounded text-indigo-600">
+                                                <span class="text-gray-700 dark:text-gray-300" x-text="person"></span>
+                                            </label>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div class="flex justify-end space-x-2 pt-2">
+                                    <button @click="saveEditExpense(expense.id)" class="px-3 py-1 bg-green-600 text-white rounded text-xs">Save</button>
+                                    <button @click="cancelEditExpense()" class="px-3 py-1 bg-gray-300 text-gray-700 rounded text-xs">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="sortedExpenses.length === 0" class="text-center py-8 text-gray-500 text-sm">No expenses found for this selection.</div>
+                </div>
+            </div>
+
+            <div x-show="activeTab === 'deposits'" class="tab-content space-y-6" x-cloak>
+                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                      <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Add Deposit</h2>
+                      <form @submit.prevent="addDeposit" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <input type="date" x-model="newDeposit.date" required class="form-input">
+                            <input type="number" x-model.number="newDeposit.amount" step="0.01" min="0" placeholder="Amount" required class="form-input">
+                        </div>
+                        <select x-model="newDeposit.depositedBy" required class="form-input">
+                            <option value="" disabled>Deposited By</option>
+                            <template x-for="person in roommates" :key="person"><option :value="person" x-text="person"></option></template>
+                        </select>
+                        <button type="submit" :disabled="loadingDeposit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-md transition-transform active:scale-95 disabled:opacity-50">Add Deposit</button>
+                      </form>
+                </div>
+                
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">History</h3>
+                        <select x-model="depositFilterOption" class="text-xs border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="all">All Members</option>
+                            <template x-for="person in roommates" :key="person">
+                                <option :value="person" x-text="person"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <template x-for="deposit in sortedDeposits" :key="deposit.id">
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex justify-between items-center" :class="{ 'ring-2 ring-indigo-500': editingDepositId === deposit.id }">
+                            <div x-show="editingDepositId !== deposit.id" class="flex-1">
+                                <div class="flex justify-between">
+                                    <div>
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white"><span x-text="deposit.depositedBy"></span> added money</p>
+                                        <p class="text-xs text-gray-500" x-text="formatDate(deposit.date)"></p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-lg font-bold text-green-600" x-text="formatCurrency(deposit.amount)"></p>
+                                        <div class="flex space-x-2 justify-end mt-1">
+                                            <button @click="startEditDeposit(deposit)" class="text-blue-400 text-xs">Edit</button>
+                                            <button @click="confirmDeleteDeposit(deposit.id)" class="text-red-400 text-xs">Del</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div x-show="editingDepositId === deposit.id" class="w-full space-y-2">
+                                <div class="flex space-x-2">
+                                    <input type="date" x-model="editDeposit.date" class="form-input text-xs">
+                                    <input type="number" x-model.number="editDeposit.amount" class="form-input text-xs">
+                                </div>
+                                <select x-model="editDeposit.depositedBy" class="form-input text-xs">
+                                    <template x-for="person in roommates" :key="person"><option :value="person" x-text="person"></option></template>
+                                </select>
+                                <div class="flex justify-end space-x-2">
+                                    <button @click="saveEditDeposit(deposit.id)" class="px-3 py-1 bg-green-600 text-white rounded text-xs">Save</button>
+                                    <button @click="cancelEditDeposit()" class="px-3 py-1 bg-gray-300 text-gray-700 rounded text-xs">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="sortedDeposits.length === 0" class="text-center py-8 text-gray-500 text-sm">No deposits found for this selection.</div>
+                </div>
+            </div>
+
+        </main>
+
+        <div x-show="showDeleteConfirm" x-transition class="fixed inset-0 bg-gray-900 bg-opacity-75 h-full w-full z-50 flex items-center justify-center p-4" @click.away="cancelDelete()">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-sm w-full shadow-2xl">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">Confirm Delete</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Are you sure you want to delete this? This action cannot be undone.</p>
+                <div class="flex space-x-3">
+                    <button @click="cancelDelete()" class="flex-1 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm">Cancel</button>
+                    <button @click="executeDelete()" class="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('expenseTracker', () => ({
+                isDarkMode: localStorage.getItem('darkMode') === 'true',
+                showSettings: false,
+                showRoomSetup: true,
+                roomCode: '',
+                currentRoom: null,
+                loadingRoom: false,
+                notes: '',
+                activeTab: 'summary',
+                roommates: ['Chandu', 'Gowtham', 'Manohar', 'Pradeep'],
+                categories: ['Food', 'Rent', 'Utilities', 'Groceries', 'Entertainment', 'Transport', 'Other'],
+                summary: { totalPot: 0, totalSpent: 0, moneyLeft: 0, byPerson: {} },
+                expenses: [],
+                deposits: [],
+                expenseFilterOption: 'all',
+                depositFilterOption: 'all',
+                newExpense: { date: '', amount: '', description: '', paidBy: '', splitAmong: [], category: 'Food' },
+                newDeposit: { date: '', amount: '', depositedBy: '' },
+                newRoommateName: '',
+                editingRoommate: [],
+                editRoommateName: [],
+                loadingExpense: false,
+                loadingDeposit: false,
+                errorMessage: '',
+                showDeleteConfirm: false,
+                deleteType: null,
+                deleteId: null,
+                deleteName: '',
+                editingExpenseId: null,
+                editingDepositId: null,
+                editExpense: {},
+                editDeposit: {},
+
+                init() {
+                    document.documentElement.classList.toggle('dark', this.isDarkMode);
+                    const savedRoom = localStorage.getItem('currentRoom');
+                    
+                    const today = this.getTodayDate();
+                    this.newExpense.date = today;
+                    this.newDeposit.date = today;
+
+                    if (savedRoom) {
+                        this.currentRoom = savedRoom;
+                        this.showRoomSetup = false;
+                        this.loadData();
+                    }
+                    // Removed redundant watchers for filters (handled by getters)
+                },
+                getTodayDate() {
+                    const now = new Date();
+                    return new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                },
+                get sortedExpenses() {
+                    let filtered = [...this.expenses];
+                    if (this.expenseFilterOption !== 'all') {
+                        filtered = filtered.filter(expense => expense.paidBy === this.expenseFilterOption || expense.splitAmong.includes(this.expenseFilterOption));
+                    }
+                    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    return filtered;
+                },
+                get sortedDeposits() {
+                    let filtered = [...this.deposits];
+                    if (this.depositFilterOption !== 'all') {
+                        filtered = filtered.filter(deposit => deposit.depositedBy === this.depositFilterOption);
+                    }
+                    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    return filtered;
+                },
+                toggleDarkMode() {
+                    this.isDarkMode = !this.isDarkMode;
+                    localStorage.setItem('darkMode', this.isDarkMode);
+                    document.documentElement.classList.toggle('dark', this.isDarkMode);
+                },
+                toggleSettings() { this.showSettings = !this.showSettings; },
+                closeSettingsIfOutside(event) { if (event.target.closest('.settings-toggle') || event.target.closest('.fixed')) return; this.showSettings = false; },
+                toggleSplit(selectAll) {
+                    this.newExpense.splitAmong = selectAll ? [...this.roommates] : [];
+                },
+                formatSplitList(list) {
+                    if (!list || list.length === 0) return 'Nobody';
+                    if (this.roommates.length > 0 && list.length === this.roommates.length) return 'Everyone';
+                    return list.join(', ');
+                },
+                joinRoom() {
+                    if (!this.roomCode.trim()) { this.errorMessage = 'Please enter a room code.'; return; }
+                    this.loadingRoom = true;
+                    this.errorMessage = '';
+                    setTimeout(() => {
+                        this.currentRoom = this.roomCode.trim().toUpperCase();
+                        localStorage.setItem('currentRoom', this.currentRoom);
+                        if (!localStorage.getItem(`room_${this.currentRoom}`)) {
+                            localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify({
+                                roommates: this.roommates, expenses: {}, deposits: {}, notes: ''
+                            }));
+                        }
+                        this.showRoomSetup = false;
+                        this.loadData();
+                        this.loadingRoom = false;
+                    }, 500);
+                },
+                leaveRoom() {
+                    this.currentRoom = null;
+                    this.showRoomSetup = true;
+                    this.roomCode = '';
+                    this.showSettings = false; 
+                    this.roommates = ['Chandu', 'Gowtham', 'Manohar', 'Pradeep'];
+                    this.expenses = [];
+                    this.deposits = [];
+                    localStorage.removeItem('currentRoom');
+                },
+
+                addRoommate() {
+                    const name = this.newRoommateName.trim();
+                    if (!name) return;
+                    if (this.roommates.some(r => r.toLowerCase() === name.toLowerCase())) {
+                        this.errorMessage = 'Name exists.'; return;
+                    }
+                    try {
+                        const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                        roomData.roommates.push(name);
+                        localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                        this.loadData();
+                        this.newRoommateName = '';
+                    } catch (e) { this.errorMessage = e.message; }
+                },
+                startEditRoommate(index, currentName) { this.editingRoommate[index] = true; this.editRoommateName[index] = currentName; },
+                cancelEditRoommate(index) { this.editingRoommate[index] = false; },
+                saveEditRoommate(index, oldName) {
+                    const newName = this.editRoommateName[index].trim();
+                    if (!newName || (newName !== oldName && this.roommates.some(r => r.toLowerCase() === newName.toLowerCase()))) return;
+                    const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                    roomData.roommates[roomData.roommates.indexOf(oldName)] = newName;
+                    Object.values(roomData.expenses).forEach(exp => {
+                        if (exp.paidBy === oldName) exp.paidBy = newName;
+                        exp.splitAmong = exp.splitAmong.map(p => p === oldName ? newName : p);
+                    });
+                    Object.values(roomData.deposits).forEach(dep => { if (dep.depositedBy === oldName) dep.depositedBy = newName; });
+                    localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                    this.loadData();
+                    this.editingRoommate[index] = false;
+                },
+                confirmDeleteRoommate(index) {
+                    this.deleteType = 'roommate'; this.deleteId = index; this.deleteName = this.roommates[index]; this.showDeleteConfirm = true;
+                },
+                deleteRoommate(index) {
+                    const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                    const name = roomData.roommates[index];
+                    Object.keys(roomData.expenses).forEach(id => {
+                        const exp = roomData.expenses[id];
+                        if (exp.paidBy === name) delete roomData.expenses[id];
+                        else {
+                            exp.splitAmong = exp.splitAmong.filter(p => p !== name);
+                            if (exp.splitAmong.length === 0) delete roomData.expenses[id];
+                        }
+                    });
+                    Object.keys(roomData.deposits).forEach(id => { if (roomData.deposits[id].depositedBy === name) delete roomData.deposits[id]; });
+                    roomData.roommates.splice(index, 1);
+                    localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                    this.loadData();
+                },
+                saveNotes() {
+                    const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                    roomData.notes = this.notes;
+                    localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                },
+                addExpense() {
+                    if (this.newExpense.splitAmong.length === 0 || this.newExpense.amount <= 0 || !this.newExpense.description.trim()) {
+                         this.errorMessage = 'Please check inputs.'; return; 
+                    }
+                    this.loadingExpense = true;
+                    setTimeout(() => {
+                        const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                        const id = Date.now().toString();
+                        roomData.expenses[id] = { ...this.newExpense, description: this.newExpense.description.trim(), splitAmong: [...this.newExpense.splitAmong] };
+                        localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                        this.newExpense = { date: this.getTodayDate(), amount: '', description: '', paidBy: '', splitAmong: [...this.roommates], category: 'Food' };
+                        this.loadData();
+                        this.loadingExpense = false;
+                    }, 300);
+                },
+                addDeposit() {
+                     if (this.newDeposit.amount <= 0 || !this.newDeposit.depositedBy) return;
+                     this.loadingDeposit = true;
+                     setTimeout(() => {
+                        const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                        const id = Date.now().toString();
+                        roomData.deposits[id] = { ...this.newDeposit };
+                        localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                        this.newDeposit = { date: this.getTodayDate(), amount: '', depositedBy: '' };
+                        this.loadData();
+                        this.loadingDeposit = false;
+                      }, 300);
+                },
+                confirmResetAll() { this.deleteType = 'resetAll'; this.showDeleteConfirm = true; },
+                
+                startEditExpense(expense) {
+                    this.editingExpenseId = expense.id;
+                    this.editExpense = JSON.parse(JSON.stringify(expense)); 
+                },
+                saveEditExpense(id) {
+                    const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                    roomData.expenses[id] = { ...this.editExpense };
+                    localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                    this.loadData();
+                    this.editingExpenseId = null;
+                },
+                cancelEditExpense() { this.editingExpenseId = null; },
+                confirmDeleteExpense(id) { this.deleteType = 'expense'; this.deleteId = id; this.showDeleteConfirm = true; },
+
+                startEditDeposit(deposit) {
+                    this.editingDepositId = deposit.id;
+                    this.editDeposit = { ...deposit };
+                },
+                saveEditDeposit(id) {
+                    const roomData = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`));
+                    roomData.deposits[id] = { ...this.editDeposit };
+                    localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                    this.loadData();
+                    this.editingDepositId = null;
+                },
+                cancelEditDeposit() { this.editingDepositId = null; },
+                confirmDeleteDeposit(id) { this.deleteType = 'deposit'; this.deleteId = id; this.showDeleteConfirm = true; },
+                
+                cancelDelete() { this.showDeleteConfirm = false; this.deleteType = null; },
+                executeDelete() {
+                    if (this.deleteType !== 'resetAll' && !this.deleteId) return;
+                    const roomData = this.currentRoom ? JSON.parse(localStorage.getItem(`room_${this.currentRoom}`)) : null;
+                    
+                    if (this.deleteType === 'expense') delete roomData.expenses[this.deleteId];
+                    else if (this.deleteType === 'deposit') delete roomData.deposits[this.deleteId];
+                    else if (this.deleteType === 'roommate') { this.deleteRoommate(this.deleteId); this.cancelDelete(); return; }
+                    else if (this.deleteType === 'resetAll') {
+                        Object.keys(localStorage).forEach(k => { if(k.startsWith('room_') || k === 'currentRoom') localStorage.removeItem(k); });
+                        this.leaveRoom(); this.cancelDelete(); return;
+                    }
+                    if(roomData) localStorage.setItem(`room_${this.currentRoom}`, JSON.stringify(roomData));
+                    this.loadData();
+                    this.cancelDelete();
+                },
+
+                loadData() {
+                     if (!this.currentRoom) return;
+                     try {
+                        const data = JSON.parse(localStorage.getItem(`room_${this.currentRoom}`)) || { roommates: this.roommates, expenses: {}, deposits: {}, notes: '' };
+                        this.roommates = data.roommates;
+                        this.notes = data.notes || '';
+                        this.expenses = Object.entries(data.expenses || {}).map(([id, val]) => ({ id, ...val }));
+                        this.deposits = Object.entries(data.deposits || {}).map(([id, val]) => ({ id, ...val }));
+                        this.editingRoommate = new Array(this.roommates.length).fill(false);
+                        this.editRoommateName = new Array(this.roommates.length).fill('');
+                        if (this.newExpense.splitAmong.length === 0) this.newExpense.splitAmong = [...this.roommates];
+                        this.updateSummary(data.expenses || {}, data.deposits || {});
+                      } catch(e) { console.error(e); }
+                },
+                updateSummary(expenses, deposits) {
+                    const s = { totalPot: 0, totalSpent: 0, moneyLeft: 0, byPerson: {} };
+                    this.roommates.forEach(p => s.byPerson[p] = { deposited: 0, expenseShare: 0, balance: 0 });
+                    
+                    Object.values(deposits).forEach(d => {
+                        if (d.depositedBy && s.byPerson[d.depositedBy]) {
+                            s.totalPot += d.amount;
+                            s.byPerson[d.depositedBy].deposited += d.amount;
+                        }
+                    });
+                    Object.values(expenses).forEach(e => {
+                        if (e.splitAmong && e.splitAmong.length > 0) {
+                            s.totalSpent += e.amount;
+                            const share = e.amount / e.splitAmong.length;
+                            e.splitAmong.forEach(p => { if (s.byPerson[p]) s.byPerson[p].expenseShare += share; });
+                        }
+                    });
+                    this.roommates.forEach(p => s.byPerson[p].balance = s.byPerson[p].deposited - s.byPerson[p].expenseShare);
+                    s.moneyLeft = s.totalPot - s.totalSpent;
+                    this.summary = s;
+                },
+                formatCurrency(amount) { return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount || 0); },
+                formatDate(dateStr) { if(!dateStr) return ''; const d = new Date(dateStr); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); },
+                clearErrors() { this.errorMessage = ''; }
+            }));
+        });
+    </script>
+</body>
+</html>
