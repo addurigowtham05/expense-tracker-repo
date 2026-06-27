@@ -672,7 +672,7 @@ function App() {
           
           <div className="text-center mb-8">
             <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-600 to-violet-500 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400">
-              Room Expense
+              Budget
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">
               Settle transactions seamlessly with Supabase & UPI
