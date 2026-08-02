@@ -64,7 +64,7 @@ jobs:
 
       - name: Workaround Git 128 error in Xcode SPM
         run: |
-          git config --global --unset-all http.https://github.com/.extraheader
+          git config --global --unset-all http.https://github.com/.extraheader || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
