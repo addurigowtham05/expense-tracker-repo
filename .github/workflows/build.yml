@@ -113,4 +113,3 @@ jobs:
         with:
           name: room-expense-tracker-ipa
           path: frontend/ios/App/build/App.ipa
-
