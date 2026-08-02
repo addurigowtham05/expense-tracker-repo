@@ -1,4 +1,4 @@
-name: Build Mobile Apps (APK)
+name: Build Mobile Apps (APK & IPA)
 
 on:
   push:
@@ -52,3 +52,58 @@ jobs:
         with:
           name: room-expense-tracker-apk
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-14
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Build React Web App
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Sync Capacitor Assets
+        run: |
+          cd frontend
+          npx cap sync ios
+
+      - name: Build iOS App (Unsigned)
+        run: |
+          cd frontend/ios/App
+          xcodebuild -project App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphoneos \
+            -archivePath $PWD/build/App.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Package IPA
+        run: |
+          cd frontend/ios/App
+          mkdir -p build/Payload
+          cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/
+          cd build
+          zip -r App.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-expense-tracker-ipa
+          path: frontend/ios/App/build/App.ipa
