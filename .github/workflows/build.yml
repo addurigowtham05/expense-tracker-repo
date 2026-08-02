@@ -1,4 +1,4 @@
-name: Build Mobile Apps (APK)
+name: Build Mobile Apps (APK & IPA)
 
 on:
   push:
