@@ -59,6 +59,12 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Workaround Git 128 error in Xcode SPM
+        run: |
+          git config --global --unset-all http.https://github.com/.extraheader
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
