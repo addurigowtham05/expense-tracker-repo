@@ -113,3 +113,45 @@ jobs:
         with:
           name: room-expense-tracker-ipa
           path: frontend/ios/App/build/App.ipa
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') && success()
+    permissions:
+      contents: write
+    steps:
+      - name: Download Android APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: room-expense-tracker-apk
+          path: artifacts/apk
+
+      - name: Download iOS IPA Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: room-expense-tracker-ipa
+          path: artifacts/ipa
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          find artifacts/apk -name "*.apk" -exec cp {} release-assets/RoomExpenseTracker-debug.apk \;
+          find artifacts/ipa -name "*.ipa" -exec cp {} release-assets/RoomExpenseTracker.ipa \;
+          ls -la release-assets
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          gh release create "$TAG" release-assets/* \
+            --title "Release $TAG (Build #${{ github.run_number }})" \
+            --notes "### 📱 Room Expense Tracker Mobile Builds
+
+          Permanent download links (these do not expire):
+          - **Android APK**: [\`RoomExpenseTracker-debug.apk\`](<https://github.com/${{ github.repository }}/releases/download/$TAG/RoomExpenseTracker-debug.apk>)
+          - **iOS IPA**: [\`RoomExpenseTracker.ipa\`](<https://github.com/${{ github.repository }}/releases/download/$TAG/RoomExpenseTracker.ipa>)
+
+          Built from commit: \`${{ github.sha }}\`"
