@@ -1324,62 +1324,61 @@ function App() {
                                 className={`bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border ${editingExpenseId === exp.id ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-100 dark:border-slate-800'}`}
                               >
                                 {editingExpenseId !== exp.id ? (
-                                  <div className="flex justify-between items-start">
-                                    <div className="space-y-1.5 flex-1 pr-2">
-                                      <h5 className="font-bold text-slate-850 dark:text-white text-sm leading-snug">{exp.purpose}</h5>
-                                      <p className="text-[11px] text-slate-400">
-                                        Paid by <strong className="text-slate-700 dark:text-slate-300 font-semibold">{exp.paidBy}{exp.paidBy?.toLowerCase() === myName?.toLowerCase() ? ' (You)' : ''}</strong>
-                                      </p>
-                                      
-                                      {/* Individual Split Tags */}
-                                      {exp.splitAmong && exp.splitAmong.length > 0 && (
-                                        <div className="pt-1.5">
-                                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                            Split share ({formatCurrency(exp.amount / exp.splitAmong.length)} each):
-                                          </span>
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {exp.splitAmong.map(person => {
-                                              const isMe = person.toLowerCase() === myName?.toLowerCase();
-                                              const shareAmount = exp.amount / exp.splitAmong.length;
-                                              return (
-                                                <span 
-                                                  key={person}
-                                                  className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md font-semibold transition-all ${
-                                                    isMe 
-                                                      ? 'bg-indigo-600 text-white shadow-sm font-bold' 
-                                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-750'
-                                                  }`}
-                                                >
-                                                  <span>{person}{isMe ? ' (You)' : ''}</span>
-                                                  <span className={isMe ? 'opacity-60' : 'text-slate-400'}>:</span>
-                                                  <span className={isMe ? 'font-bold' : 'font-medium'}>{formatCurrency(shareAmount)}</span>
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
+                                  <div>
+                                    {/* Top Row: Purpose & Total Amount */}
+                                    <div className="flex justify-between items-start">
+                                      <h5 className="font-bold text-slate-850 dark:text-white text-sm leading-snug flex-1 pr-2">
+                                        {exp.purpose}
+                                      </h5>
+                                      <div className="text-right flex flex-col items-end space-y-1">
+                                        <span className="font-extrabold text-sm text-rose-600 dark:text-rose-450">
+                                          {formatCurrency(exp.amount)}
+                                        </span>
+                                        <div className="flex space-x-1.5 pt-0.5">
+                                          <button 
+                                            onClick={() => startEditExpense(exp)}
+                                            className="p-1 rounded bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 hover:text-indigo-600 transition-all"
+                                            title="Edit"
+                                          >
+                                            <Edit3 size={11} />
+                                          </button>
+                                          <button 
+                                            onClick={() => initiateDelete('expense', exp.id, exp.purpose)}
+                                            className="p-1 rounded bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 hover:text-rose-600 transition-all"
+                                            title="Delete"
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
                                         </div>
-                                      )}
+                                      </div>
                                     </div>
-                                    <div className="text-right flex flex-col items-end space-y-2">
-                                      <span className="font-extrabold text-sm text-rose-600 dark:text-rose-450">
-                                        {formatCurrency(exp.amount)}
-                                      </span>
-                                      
-                                      <div className="flex space-x-2 pt-1">
-                                        <button 
-                                          onClick={() => startEditExpense(exp)}
-                                          className="p-1 rounded bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 hover:text-indigo-600 transition-all"
-                                          title="Edit"
-                                        >
-                                          <Edit3 size={12} />
-                                        </button>
-                                        <button 
-                                          onClick={() => initiateDelete('expense', exp.id, exp.purpose)}
-                                          className="p-1 rounded bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 hover:text-rose-600 transition-all"
-                                          title="Delete"
-                                        >
-                                          <Trash2 size={12} />
-                                        </button>
+
+                                    {/* Clean 3-Row Information Section */}
+                                    <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
+                                      {/* 1. Paid by */}
+                                      <div className="flex items-center">
+                                        <span className="text-[11px] font-medium text-slate-400 w-24 flex-shrink-0">Paid by:</span>
+                                        <span className="font-bold text-slate-750 dark:text-slate-200">
+                                          {exp.paidBy}{exp.paidBy?.toLowerCase() === myName?.toLowerCase() ? ' (You)' : ''}
+                                        </span>
+                                      </div>
+
+                                      {/* 2. Split among */}
+                                      <div className="flex items-start">
+                                        <span className="text-[11px] font-medium text-slate-400 w-24 flex-shrink-0 pt-0.5">Split among:</span>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300 leading-relaxed">
+                                          {exp.splitAmong && exp.splitAmong.length > 0 
+                                            ? exp.splitAmong.map(p => p.toLowerCase() === myName?.toLowerCase() ? `${p} (You)` : p).join(', ')
+                                            : 'All roommates'}
+                                        </span>
+                                      </div>
+
+                                      {/* 3. Each (Highlighted) */}
+                                      <div className="flex items-center pt-0.5">
+                                        <span className="text-[11px] font-medium text-slate-400 w-24 flex-shrink-0">Each:</span>
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-black bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/70 dark:border-indigo-800/60 shadow-sm">
+                                          {formatCurrency(exp.amount / (exp.splitAmong?.length || 1))}
+                                        </span>
                                       </div>
                                     </div>
                                   </div>
