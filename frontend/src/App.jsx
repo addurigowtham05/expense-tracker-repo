@@ -2,10 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, Plus, History, Settings, Menu, Moon, Sun, Trash2, Edit3, 
   Save, X, ChevronRight, User, PlusCircle, CheckCircle, QrCode, 
-  Wallet, LogOut, FileText, Calendar, Filter, Users, ArrowUpRight, ArrowDownLeft
+  Wallet, LogOut, FileText, Calendar, Filter, Users, ArrowUpRight, ArrowDownLeft,
+  Copy, Check, ExternalLink
 } from 'lucide-react';
 
 const API_BASE = "https://gowtham9010656-room-expense-backend.hf.space/api";
+
+// Safe API response parser: prevents "Unexpected token 'Y', 'Your space' is not valid JSON" crashes when Hugging Face wakes up
+const parseApiResponse = async (res) => {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.includes("Your space") || res.status === 503 || res.status === 502) {
+      throw new Error("Server is waking up from sleep (takes ~15-20s). Please tap again in a moment.");
+    }
+    throw new Error(text || `Server error (${res.status})`);
+  }
+};
 
 function App() {
   // Authentication & Room State
@@ -53,9 +67,10 @@ function App() {
   });
   const [expenses, setExpenses] = useState([]);
   const [deposits, setDeposits] = useState([]);
-  const [expenseFilter, setExpenseFilter] = useState('all');
-  const [depositFilter, setDepositFilter] = useState('all');
+  const [expenseFilter, setExpenseFilter] = useState('mine');
+  const [depositFilter, setDepositFilter] = useState('mine');
   const [dataLoading, setDataLoading] = useState(false);
+  const [copiedUpi, setCopiedUpi] = useState(false);
 
   // Form inputs
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -92,6 +107,7 @@ function App() {
   // Dialog & Notification state
   const [popup, setPopup] = useState({ show: false, message: '' });
   const [upiPaymentModal, setUpiPaymentModal] = useState({ show: false, upiLink: '', amount: '' });
+  const [showModalQr, setShowModalQr] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, type: '', id: '', name: '' });
 
   // Dark Mode effect
@@ -140,36 +156,94 @@ function App() {
     setPopup({ show: true, message: msg });
   };
 
-  // API Call Helpers
-  const loadRoomData = async (roomId) => {
+  // API Call Helpers with Instant Local Cache & Parallel Fetching
+  const loadRoomData = async (roomId, forceRefresh = false) => {
     if (!roomId) return;
-    setDataLoading(true);
-    try {
-      // 1. Fetch Room Summary
-      const summaryRes = await fetch(`${API_BASE}/rooms/${roomId}/summary`);
-      if (summaryRes.ok) {
-        const summaryData = await summaryRes.json();
-        setSummary(summaryData);
-        if (summaryData.roommates.length > 0) {
-          // Initialize default split among if empty
-          if (expenseSplitAmong.length === 0) {
-            setExpenseSplitAmong(summaryData.roommates);
+
+    // 1. Instant Cache Load (Zero UI Lag)
+    const cacheKey = `budget_room_cache_${roomId}`;
+    if (!forceRefresh) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.summary) setSummary(parsed.summary);
+          if (parsed.expenses) setExpenses(parsed.expenses);
+          if (parsed.deposits) setDeposits(parsed.deposits);
+          if (parsed.summary?.roommates && expenseSplitAmong.length === 0) {
+            setExpenseSplitAmong(parsed.summary.roommates);
           }
         }
+      } catch (e) {
+        // ignore cache read issues
+      }
+    }
+
+    setDataLoading(true);
+    try {
+      // 2. High-speed single-flight request
+      let fullLoaded = false;
+      try {
+        const fullRes = await fetch(`${API_BASE}/rooms/${roomId}/full_data`);
+        if (fullRes.ok) {
+          const fullData = await parseApiResponse(fullRes);
+          if (fullData.summary) {
+            setSummary(fullData.summary);
+            if (fullData.summary.roommates && expenseSplitAmong.length === 0) {
+              setExpenseSplitAmong(fullData.summary.roommates);
+            }
+          }
+          if (fullData.expenses) setExpenses(fullData.expenses);
+          if (fullData.deposits) setDeposits(fullData.deposits);
+
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+              summary: fullData.summary,
+              expenses: fullData.expenses,
+              deposits: fullData.deposits,
+              timestamp: Date.now()
+            }));
+          } catch (e) {}
+          fullLoaded = true;
+        }
+      } catch (e) {
+        // Fallback to parallel requests
       }
 
-      // 2. Fetch Expenses
-      const expensesRes = await fetch(`${API_BASE}/rooms/${roomId}/expenses`);
-      if (expensesRes.ok) {
-        const expensesData = await expensesRes.json();
-        setExpenses(expensesData);
-      }
+      // 3. Parallel fallback if single-flight is unavailable
+      if (!fullLoaded) {
+        const [summaryRes, expensesRes, depositsRes] = await Promise.all([
+          fetch(`${API_BASE}/rooms/${roomId}/summary`),
+          fetch(`${API_BASE}/rooms/${roomId}/expenses`),
+          fetch(`${API_BASE}/rooms/${roomId}/deposits`)
+        ]);
 
-      // 3. Fetch Deposits
-      const depositsRes = await fetch(`${API_BASE}/rooms/${roomId}/deposits`);
-      if (depositsRes.ok) {
-        const depositsData = await depositsRes.json();
-        setDeposits(depositsData);
+        let newSummary = null, newExpenses = null, newDeposits = null;
+
+        if (summaryRes.ok) {
+          newSummary = await parseApiResponse(summaryRes);
+          setSummary(newSummary);
+          if (newSummary.roommates && expenseSplitAmong.length === 0) {
+            setExpenseSplitAmong(newSummary.roommates);
+          }
+        }
+        if (expensesRes.ok) {
+          newExpenses = await parseApiResponse(expensesRes);
+          setExpenses(newExpenses);
+        }
+        if (depositsRes.ok) {
+          newDeposits = await parseApiResponse(depositsRes);
+          setDeposits(newDeposits);
+        }
+
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({
+            summary: newSummary || summary,
+            expenses: newExpenses || expenses,
+            deposits: newDeposits || deposits,
+            timestamp: Date.now()
+          }));
+        } catch (e) {}
       }
     } catch (err) {
       console.error("Error loading room data: ", err);
@@ -198,12 +272,12 @@ function App() {
         })
       });
 
+      const resData = await parseApiResponse(response);
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || "Failed to create room.");
+        throw new Error(resData?.detail || "Failed to create room.");
       }
 
-      const room = await response.json();
+      const room = resData;
       
       const newSession = {
         roomId: room.roomId,
@@ -251,12 +325,12 @@ function App() {
         })
       });
 
+      const resData = await parseApiResponse(response);
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || "Room name or code is incorrect.");
+        throw new Error(resData?.detail || "Room name or code is incorrect.");
       }
 
-      const room = await response.json();
+      const room = resData;
       
       const newSession = {
         roomId: room.roomId,
@@ -348,7 +422,35 @@ function App() {
     }
   };
 
-  const handleAddDeposit = async (e) => {
+  const handleCopyUpi = () => {
+    if (summary.upiId) {
+      navigator.clipboard.writeText(summary.upiId);
+      setCopiedUpi(true);
+      setTimeout(() => setCopiedUpi(false), 2000);
+    }
+  };
+
+  const openPaymentApp = (scheme) => {
+    const amt = parseFloat(upiPaymentModal.amount || depositAmount || '0').toFixed(2);
+    const pa = summary.upiId;
+    const pn = encodeURIComponent(summary.roomName);
+    const tn = encodeURIComponent(`RoomDeposit-${currentSession?.memberName || 'Member'}`);
+    
+    let url = '';
+    if (scheme === 'gpay') {
+      url = `gpay://upi/pay?pa=${pa}&pn=${pn}&am=${amt}&cu=INR&tn=${tn}`;
+    } else if (scheme === 'phonepe') {
+      url = `phonepe://pay?pa=${pa}&pn=${pn}&am=${amt}&cu=INR&tn=${tn}`;
+    } else if (scheme === 'paytm') {
+      url = `paytmmp://pay?pa=${pa}&pn=${pn}&am=${amt}&cu=INR&tn=${tn}`;
+    } else {
+      url = `upi://pay?pa=${pa}&pn=${pn}&am=${amt}&cu=INR&tn=${tn}`;
+    }
+
+    window.location.href = url;
+  };
+
+  const handleAddDeposit = (e) => {
     e.preventDefault();
     if (!depositAmount || parseFloat(depositAmount) <= 0) {
       alert("Please enter a valid deposit amount.");
@@ -356,17 +458,13 @@ function App() {
     }
 
     const amt = parseFloat(depositAmount).toFixed(2);
-    // Create UPI deep link
-    // formatted: upi://pay?pa=adminupi@iob&pn=DreamRoom&am=500.00&cu=INR&tn=RoomDepositByMember
     const pa = summary.upiId;
     const pn = encodeURIComponent(summary.roomName);
     const memName = encodeURIComponent(currentSession.memberName);
     const upiLink = `upi://pay?pa=${pa}&pn=${pn}&am=${amt}&cu=INR&tn=RoomDeposit-${memName}`;
 
-    // Open link to pay (PhonePe / other payment apps on mobile)
-    window.location.href = upiLink;
-
-    // Show confirmation Modal for Desktop fallback & manual API save
+    // Open Payment Choice dialog directly without blindly redirecting
+    // (Prevents iPhone Safari from hijacking to WhatsApp Pay)
     setUpiPaymentModal({
       show: true,
       upiLink: upiLink,
@@ -391,8 +489,8 @@ function App() {
       setUpiPaymentModal({ show: false, upiLink: '', amount: '' });
       setDepositAmount('');
       setDepositDate(new Date().toISOString().split('T')[0]);
-      showPopup("Deposit is added");
-      loadRoomData(currentSession.roomId);
+      showPopup("Deposit added successfully!");
+      loadRoomData(currentSession.roomId, true);
       setActiveTab('home');
     } catch (err) {
       alert(err.message);
@@ -617,14 +715,26 @@ function App() {
     return date.toLocaleString('default', { month: 'short' });
   };
 
-  // Filter lists
+  // Filter lists with default 'mine' (User involved transactions)
+  const myName = currentSession?.memberName;
+
   const filteredExpenses = expenses.filter(exp => {
     if (expenseFilter === 'all') return true;
+    if (expenseFilter === 'mine') {
+      if (!myName) return true;
+      const isPaidByMe = exp.paidBy && exp.paidBy.toLowerCase() === myName.toLowerCase();
+      const isInSplit = exp.splitAmong && exp.splitAmong.some(p => p.toLowerCase() === myName.toLowerCase());
+      return isPaidByMe || isInSplit;
+    }
     return exp.paidBy === expenseFilter || (exp.splitAmong && exp.splitAmong.includes(expenseFilter));
   });
 
   const filteredDeposits = deposits.filter(dep => {
     if (depositFilter === 'all') return true;
+    if (depositFilter === 'mine') {
+      if (!myName) return true;
+      return dep.depositedBy && dep.depositedBy.toLowerCase() === myName.toLowerCase();
+    }
     return dep.depositedBy === depositFilter;
   });
 
@@ -854,10 +964,10 @@ function App() {
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex justify-center items-start sm:py-6">
       
       {/* Mobile App Container Frame */}
-      <div className="w-full sm:max-w-md min-h-screen sm:min-h-[820px] bg-slate-50 dark:bg-slate-900 sm:rounded-[36px] sm:shadow-2xl overflow-hidden border border-transparent sm:border-slate-200 dark:sm:border-slate-800 flex flex-col relative pb-20">
+      <div className="w-full sm:max-w-md h-[100dvh] sm:h-[844px] bg-slate-50 dark:bg-slate-900 sm:rounded-[36px] sm:shadow-2xl overflow-hidden border border-transparent sm:border-slate-200 dark:sm:border-slate-800 flex flex-col relative">
         
         {/* APP HEADER */}
-        <header className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-40 px-4 py-3 flex items-center justify-between">
+        <header className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 shrink-0 z-30 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <button 
               onClick={() => setShowSideMenu(true)}
@@ -873,6 +983,9 @@ function App() {
           </div>
           
           <div className="flex items-center space-x-2">
+            {dataLoading && (
+              <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-1"></div>
+            )}
             <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[10px] font-bold text-slate-500 dark:text-slate-400">
               {currentSession.memberName}
             </div>
@@ -888,8 +1001,8 @@ function App() {
         )}
 
         {/* MAIN BODY SCROLL */}
-        <main className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-          {dataLoading ? (
+        <main className="flex-1 overflow-y-auto p-4 pb-28 scrollbar-hide">
+          {dataLoading && !summary.roomName ? (
             <div className="h-64 flex flex-col items-center justify-center space-y-3">
               <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
               <span className="text-xs font-semibold text-slate-400">Loading data from Supabase...</span>
@@ -1112,13 +1225,13 @@ function App() {
                     <form onSubmit={handleAddDeposit} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-4">
                       <div className="flex items-center space-x-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm mb-2">
                         <ArrowDownLeft size={16} />
-                        <span>Add Deposit (Pot Injection)</span>
+                        <span>Add Room Deposit</span>
                       </div>
 
                       <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-2xl text-slate-700 dark:text-slate-350 text-xs leading-relaxed space-y-1.5">
-                        <p className="font-bold text-indigo-700 dark:text-indigo-400">Payment Flow Integration:</p>
-                        <p>Entering an amount and tapping below will launch the payment sequence (paying to admin UPI: <strong className="font-mono text-indigo-600 dark:text-indigo-300">{summary.upiId}</strong>).</p>
-                        <p>On mobile, it will trigger the deep link directly to payment apps (like PhonePe).</p>
+                        <p className="font-bold text-indigo-700 dark:text-indigo-400">Flexible Payment Options:</p>
+                        <p>Enter the amount and tap below. You will be able to choose <strong className="font-semibold text-slate-800 dark:text-white">Google Pay, PhonePe, Paytm, or any UPI app</strong> without any default hijacking.</p>
+                        <p className="text-[11px] text-slate-400">Paying to Room UPI: <strong className="font-mono text-indigo-600 dark:text-indigo-300">{summary.upiId}</strong></p>
                       </div>
 
                       <div>
@@ -1150,7 +1263,7 @@ function App() {
                         className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold py-3.5 px-4 rounded-xl text-xs shadow-md hover:from-emerald-600 hover:to-teal-600 transition-all flex items-center justify-center space-x-1.5 pt-4"
                       >
                         <Wallet size={14} />
-                        <span>Pay via PhonePe / UPI</span>
+                        <span>Continue to Pay & Choose App</span>
                       </button>
                     </form>
                   )}
@@ -1178,16 +1291,17 @@ function App() {
                   {activeHistorySection === 'expense' ? (
                     <div className="space-y-4">
                       {/* Filter Option */}
-                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm text-xs font-semibold">
-                        <span className="flex items-center text-slate-400"><Filter size={12} className="mr-1" /> Filter by:</span>
+                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm text-xs font-semibold">
+                        <span className="flex items-center text-slate-400"><Filter size={12} className="mr-1.5" /> Filter by:</span>
                         <select
                           value={expenseFilter}
                           onChange={(e) => setExpenseFilter(e.target.value)}
-                          className="bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 font-bold focus:outline-none"
+                          className="bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 px-2.5 font-bold focus:outline-none text-slate-700 dark:text-slate-200"
                         >
-                          <option value="all">Everyone</option>
-                          {summary.roommates && summary.roommates.map(name => (
-                            <option key={name} value={name}>{name}</option>
+                          <option value="mine">My Expenses (Involved) ⭐</option>
+                          <option value="all">All Roommates (Everyone)</option>
+                          {summary.roommates && summary.roommates.filter(n => n?.toLowerCase() !== myName?.toLowerCase()).map(name => (
+                            <option key={name} value={name}>{name}'s Expenses</option>
                           ))}
                         </select>
                       </div>
@@ -1211,14 +1325,40 @@ function App() {
                               >
                                 {editingExpenseId !== exp.id ? (
                                   <div className="flex justify-between items-start">
-                                    <div className="space-y-1">
-                                      <h5 className="font-bold text-slate-850 dark:text-white text-sm">{exp.purpose}</h5>
+                                    <div className="space-y-1.5 flex-1 pr-2">
+                                      <h5 className="font-bold text-slate-850 dark:text-white text-sm leading-snug">{exp.purpose}</h5>
                                       <p className="text-[11px] text-slate-400">
-                                        Paid by <strong className="text-slate-700 dark:text-slate-300 font-semibold">{exp.paidBy}</strong>
+                                        Paid by <strong className="text-slate-700 dark:text-slate-300 font-semibold">{exp.paidBy}{exp.paidBy?.toLowerCase() === myName?.toLowerCase() ? ' (You)' : ''}</strong>
                                       </p>
-                                      <p className="text-[10px] text-slate-400 bg-slate-50 dark:bg-slate-800/50 px-2 py-1 rounded-md inline-block max-w-[200px] truncate leading-normal">
-                                        Split: {exp.splitAmong && exp.splitAmong.length === summary.roommates.length ? 'Everyone' : (exp.splitAmong || []).join(', ')}
-                                      </p>
+                                      
+                                      {/* Individual Split Tags */}
+                                      {exp.splitAmong && exp.splitAmong.length > 0 && (
+                                        <div className="pt-1.5">
+                                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                            Split share ({formatCurrency(exp.amount / exp.splitAmong.length)} each):
+                                          </span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {exp.splitAmong.map(person => {
+                                              const isMe = person.toLowerCase() === myName?.toLowerCase();
+                                              const shareAmount = exp.amount / exp.splitAmong.length;
+                                              return (
+                                                <span 
+                                                  key={person}
+                                                  className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md font-semibold transition-all ${
+                                                    isMe 
+                                                      ? 'bg-indigo-600 text-white shadow-sm font-bold' 
+                                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-750'
+                                                  }`}
+                                                >
+                                                  <span>{person}{isMe ? ' (You)' : ''}</span>
+                                                  <span className={isMe ? 'opacity-60' : 'text-slate-400'}>:</span>
+                                                  <span className={isMe ? 'font-bold' : 'font-medium'}>{formatCurrency(shareAmount)}</span>
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="text-right flex flex-col items-end space-y-2">
                                       <span className="font-extrabold text-sm text-rose-600 dark:text-rose-450">
@@ -1339,16 +1479,17 @@ function App() {
                   ) : (
                     <div className="space-y-4">
                       {/* Filter Option */}
-                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm text-xs font-semibold">
-                        <span className="flex items-center text-slate-400"><Filter size={12} className="mr-1" /> Filter by:</span>
+                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm text-xs font-semibold">
+                        <span className="flex items-center text-slate-400"><Filter size={12} className="mr-1.5" /> Filter by:</span>
                         <select
                           value={depositFilter}
                           onChange={(e) => setDepositFilter(e.target.value)}
-                          className="bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 font-bold focus:outline-none"
+                          className="bg-slate-50 dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 px-2.5 font-bold focus:outline-none text-slate-700 dark:text-slate-200"
                         >
-                          <option value="all">Everyone</option>
-                          {summary.roommates && summary.roommates.map(name => (
-                            <option key={name} value={name}>{name}</option>
+                          <option value="mine">My Deposits ⭐</option>
+                          <option value="all">All Roommates (Everyone)</option>
+                          {summary.roommates && summary.roommates.filter(n => n?.toLowerCase() !== myName?.toLowerCase()).map(name => (
+                            <option key={name} value={name}>{name}'s Deposits</option>
                           ))}
                         </select>
                       </div>
@@ -1372,11 +1513,16 @@ function App() {
                               >
                                 {editingDepositId !== dep.id ? (
                                   <div className="flex justify-between items-center">
-                                    <div>
-                                      <h5 className="font-bold text-slate-850 dark:text-white text-xs">Pot Injection (Deposit)</h5>
-                                      <p className="text-[11px] text-slate-400 mt-0.5">
-                                        Added by <strong className="text-slate-755 dark:text-slate-300 font-semibold">{dep.depositedBy}</strong>
-                                      </p>
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center space-x-1.5">
+                                        <h5 className="font-bold text-slate-850 dark:text-white text-sm">{dep.depositedBy}</h5>
+                                        {dep.depositedBy?.toLowerCase() === myName?.toLowerCase() && (
+                                          <span className="text-[9px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-md font-bold border border-indigo-200/60 dark:border-indigo-800/60">
+                                            You
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 font-medium">Deposit</p>
                                     </div>
                                     <div className="text-right flex flex-col items-end space-y-2">
                                       <span className="font-extrabold text-sm text-emerald-600 dark:text-emerald-450">
@@ -1636,8 +1782,8 @@ function App() {
           )}
         </main>
 
-        {/* BOTTOM NAV BAR */}
-        <footer className="absolute bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 h-16 flex items-center justify-around px-2 z-30">
+        {/* FIXED BOTTOM NAVIGATION BAR (Never slides or shifts while scrolling) */}
+        <footer className="fixed sm:absolute bottom-0 inset-x-0 sm:max-w-md sm:mx-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 h-16 flex items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom,0px)]">
           <button 
             onClick={() => setActiveTab('home')}
             className={`flex flex-col items-center justify-center space-y-1 w-14 py-2 transition-all ${activeTab === 'home' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 hover:text-slate-550'}`}
@@ -1719,39 +1865,125 @@ function App() {
           </div>
         )}
 
-        {/* UPI PAYMENT CONFIRMATION DIALOG (QR + PhonePe check) */}
+        {/* UPI PAYMENT APP CHOOSER & QR MODAL */}
         {upiPaymentModal.show && (
-          <div className="absolute inset-0 bg-slate-950/60 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-xs bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-150 dark:border-slate-850 flex flex-col items-center text-center space-y-4">
-              <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">Complete Deposit Payment</h4>
-              
-              {/* QR Code image generated dynamically using the QR API */}
-              <div className="p-3 bg-white rounded-2xl border border-slate-100 shadow-inner flex items-center justify-center">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiPaymentModal.upiLink)}`}
-                  alt="UPI QR Code" 
-                  className="w-40 h-40"
-                />
+          <div className="fixed sm:absolute inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+            <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-slate-150 dark:border-slate-800 flex flex-col space-y-3.5 my-auto max-h-[92vh] overflow-y-auto scrollbar-hide">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="text-left">
+                  <h4 className="text-sm font-extrabold text-slate-850 dark:text-white">Pay Deposit</h4>
+                  <p className="text-[10px] text-slate-400">Choose your payment app</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-450 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
+                    {formatCurrency(upiPaymentModal.amount)}
+                  </span>
+                </div>
               </div>
 
-              <p className="text-[10px] text-slate-400 leading-normal px-2">
-                Scan this QR code using PhonePe, GPay, Paytm, or click below if you have completed the transaction in your app.
-              </p>
+              {/* Quick App Launcher Buttons (Fixes iPhone WhatsApp auto-open) */}
+              <div className="space-y-2">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block text-left">
+                  Tap to pay directly:
+                </span>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Google Pay */}
+                  <button
+                    onClick={() => openPaymentApp('gpay')}
+                    className="flex items-center justify-center space-x-1.5 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all font-bold text-xs text-slate-800 dark:text-white shadow-sm active:scale-95"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
+                    <span>Google Pay</span>
+                  </button>
 
-              <div className="font-bold text-base text-slate-850 dark:text-white bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl border border-slate-100 dark:border-slate-700">
-                Amount: {formatCurrency(upiPaymentModal.amount)}
+                  {/* PhonePe */}
+                  <button
+                    onClick={() => openPaymentApp('phonepe')}
+                    className="flex items-center justify-center space-x-1.5 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100/50 text-indigo-700 dark:text-indigo-300 transition-all font-bold text-xs shadow-sm active:scale-95"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block"></span>
+                    <span>PhonePe</span>
+                  </button>
+
+                  {/* Paytm */}
+                  <button
+                    onClick={() => openPaymentApp('paytm')}
+                    className="flex items-center justify-center space-x-1.5 p-2.5 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/50 dark:bg-sky-950/30 hover:bg-sky-100/50 text-sky-700 dark:text-sky-300 transition-all font-bold text-xs shadow-sm active:scale-95"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block"></span>
+                    <span>Paytm</span>
+                  </button>
+
+                  {/* Any Other UPI App */}
+                  <button
+                    onClick={() => openPaymentApp('upi')}
+                    className="flex items-center justify-center space-x-1.5 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all font-bold text-xs shadow-sm active:scale-95"
+                  >
+                    <ExternalLink size={12} className="text-slate-500" />
+                    <span>Other UPI</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="flex space-x-2.5 w-full pt-2">
+              {/* Copy UPI ID Box */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-750 flex items-center justify-between">
+                <div className="truncate pr-2 text-left">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Room UPI ID</span>
+                  <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 truncate block">
+                    {summary.upiId}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyUpi}
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                    copiedUpi
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  }`}
+                >
+                  {copiedUpi ? <Check size={12} /> : <Copy size={12} />}
+                  <span>{copiedUpi ? "Copied!" : "Copy"}</span>
+                </button>
+              </div>
+
+              {/* Toggle QR Code */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowModalQr(!showModalQr)}
+                  className="w-full py-1.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-center space-x-1"
+                >
+                  <QrCode size={12} />
+                  <span>{showModalQr ? "Hide QR Code" : "Or Scan QR Code"}</span>
+                </button>
+
+                {showModalQr && (
+                  <div className="mt-2 p-3 bg-white rounded-2xl border border-slate-200 shadow-inner flex flex-col items-center justify-center">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(upiPaymentModal.upiLink)}`}
+                      alt="UPI QR Code" 
+                      className="w-36 h-36"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1.5">Scan with any UPI app</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Confirmation Actions */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
                 <button
                   onClick={confirmUpiDepositAdded}
-                  className="flex-1 bg-emerald-600 text-white py-2 px-3 rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all"
+                  className="w-full bg-emerald-600 text-white py-2.5 px-4 rounded-xl text-xs font-extrabold hover:bg-emerald-700 transition-all shadow-md active:scale-98 flex items-center justify-center space-x-1.5"
                 >
-                  Confirm Paid
+                  <CheckCircle size={14} />
+                  <span>I Have Paid (Record Deposit)</span>
                 </button>
+
                 <button
-                  onClick={() => setUpiPaymentModal({ show: false, upiLink: '', amount: '' })}
-                  className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 py-2 px-3 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
+                  onClick={() => { setUpiPaymentModal({ show: false, upiLink: '', amount: '' }); setShowModalQr(false); }}
+                  className="w-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 py-2 px-3 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
                 >
                   Cancel
                 </button>
